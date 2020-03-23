@@ -1,0 +1,6 @@
+[submodule "lib/ssd1306"]
+	path = lib/ssd1306
+	url = git@github.com:ThingPulse/esp8266-oled-ssd1306.git
+[submodule "lib/Adafruit_BMP280_Library"]
+	path = lib/Adafruit_BMP280_Library
+	url = git@github.com:adafruit/Adafruit_BMP280_Library.git
