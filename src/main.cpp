@@ -7,16 +7,11 @@ const uint8_t I2C_ADDRESS_DISPLAY = 0x3c;
 const uint8_t DISPLAY_SDA = 5;
 const uint8_t DISPLAY_SCL = 4;
 
-const uint8_t BMP280_0_SDA = 14;
-const uint8_t BMP280_0_SCL = 12;
-const uint8_t BMP280_1_SDA = 13;
-const uint8_t BMP280_1_SCL = 15;
+SSD1306Wire display(I2C_ADDRESS_DISPLAY, DISPLAY_SDA, DISPLAY_SCL); // uses Wire
 
-SSD1306Wire display(I2C_ADDRESS_DISPLAY, DISPLAY_SDA, DISPLAY_SCL);
-
-const int rx_pin = 13; //Serial rx pin no D2, green
-const int tx_pin = 12; //Serial tx pin no D1, blue
-
+Adafruit_BMP280 bmp(&Wire); // use I2C interface
+Adafruit_Sensor *bmp_temp = bmp.getTemperatureSensor();
+Adafruit_Sensor *bmp_pressure = bmp.getPressureSensor();
 
 void display_setup()
 {
@@ -31,56 +26,36 @@ void display_setup()
   display.display();
 }
 
-void co2_sensor_setup()
-{
-  mhz19_uart->begin(rx_pin, tx_pin);
-  mhz19_uart->setAutoCalibration(false);
-  while (mhz19_uart->getStatus() < 0)
-  {
-    Serial.println("  MH-Z19B reply is not received or inconsistent.");
-    delay(100);
-  }
-}
-
-
-void displayMeasurements(const measurement_t &m)
+void displayMeasurements(float temperature, float pressure)
 {
   display.clear();
   display.setTextAlignment(TEXT_ALIGN_LEFT);
   display.setFont(ArialMT_Plain_10);
   display.drawString(0, 0, "p [hPa]");
   display.drawString(72, 0, "Temp [deg]");
-  display.setFont(ArialMT_Plain_24);
-  display.drawString(0, 15, String(m.co2_ppm));
-  display.drawString(84, 15, String(m.temperature));
+  display.setFont(ArialMT_Plain_16);
+  display.drawString(0, 15, String(pressure));
+  display.drawString(84, 15, String(temperature));
   display.display();
 }
 
-void publishMeasurements(const measurement_t &m)
+void bmp280_setup()
 {
-  if (WiFi.status() == WL_CONNECTED)
+  if (!bmp.begin(BMP280_ADDRESS_ALT))
   {
-    std::string data;
-    prepareSchema(m, data);
+    Serial.println(F("Could not find a valid BMP280 sensor, check wiring!"));
+    while (1)
+      delay(10);
+  }
 
-    WiFiClient client; // TCP
-    if (!client.connect(host, port))
-    {
-      Serial.println("Connection failed.");
-      delay(1000);
-    } else {
-      if (client.connected())
-      {
-        client.write(data.c_str(), data.length());
-        client.flush(); // wait maximum 1s
-        client.stop();
-      }
-    }
-  }
-  else
-  {
-    wifi_setup();
-  }
+  /* Default settings from datasheet. */
+  bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,   /* Operating Mode. */
+                  Adafruit_BMP280::SAMPLING_X1,   /* Temp. oversampling */
+                  Adafruit_BMP280::SAMPLING_X1,   /* Pressure oversampling */
+                  Adafruit_BMP280::FILTER_OFF,     /* Filtering. */
+                  Adafruit_BMP280::STANDBY_MS_1); /* Standby time. */
+
+  bmp_temp->printSensorDetails();
 }
 
 void setup()
@@ -88,23 +63,27 @@ void setup()
   Serial.begin(115200);
   Serial.println("");
   Serial.println("Starting setup...");
-
   Serial.println("  display...");
   display_setup();
-  Serial.println("  wifi...");
-  wifi_setup();
-  Serial.println("  co2 sensor...");
-  co2_sensor_setup();
-
+  Serial.println("  bmp280..."); 
+  bmp280_setup();
   Serial.println("...done!");
 }
 
 void loop()
 {
-  measurement_t m = mhz19_uart->getMeasurement();
-  if(m.state != -1) {
-    displayMeasurements(m);
-    publishMeasurements(m);
-  }
-  delay(1000);
+  sensors_event_t temp_event, pressure_event;
+  bmp_temp->getEvent(&temp_event);
+  bmp_pressure->getEvent(&pressure_event);
+  displayMeasurements(temp_event.temperature, pressure_event.pressure);
+  
+  // Serial.print(F("Temperature = "));
+  // Serial.print(temp_event.temperature);
+  // Serial.println(" *C");
+
+  // Serial.print(F("Pressure = "));
+  // Serial.print(pressure_event.pressure);
+  // Serial.println(" hPa");
+
+  // Serial.println();
 }
